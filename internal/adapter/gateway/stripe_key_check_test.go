@@ -1,7 +1,6 @@
 package gateway
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -13,15 +12,16 @@ import (
 
 func TestCheckStripeKey(t *testing.T) {
 	for _, tc := range []struct {
-		name    string
-		status  int
-		body    string
-		wantErr string
+		name        string
+		status      int
+		body        string
+		wantAccount string
+		wantErr     string
 	}{
-		{"a working key", http.StatusOK, `{"object":"balance"}`, ""},
-		{"a restricted key without balance access is still valid", http.StatusForbidden, `{"error":{"type":"invalid_request_error","message":"no"}}`, ""},
-		{"a rejected key", http.StatusUnauthorized, `{"error":{"type":"invalid_request_error","message":"Invalid API Key"}}`, "rejected"},
-		{"a Stripe outage isn't blamed on the key", http.StatusInternalServerError, `{"error":{"type":"api_error","message":"down"}}`, "try again"},
+		{"a working key", http.StatusOK, `{"id":"acct_1","object":"account"}`, "acct_1", ""},
+		{"a restricted key without account access is still valid", http.StatusForbidden, `{"error":{"type":"invalid_request_error","message":"no"}}`, "", ""},
+		{"a rejected key", http.StatusUnauthorized, `{"error":{"type":"invalid_request_error","message":"Invalid API Key"}}`, "", "rejected"},
+		{"a Stripe outage isn't blamed on the key", http.StatusInternalServerError, `{"error":{"type":"api_error","message":"down"}}`, "", "try again"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -33,7 +33,10 @@ func TestCheckStripeKey(t *testing.T) {
 			backend := stripe.GetBackendWithConfig(stripe.APIBackend, &stripe.BackendConfig{
 				URL: stripe.String(srv.URL), MaxNetworkRetries: &zero, LeveledLogger: &stripe.LeveledLogger{Level: stripe.LevelNull},
 			})
-			err := checkStripeKey(context.Background(), client.New("sk_test_x", &stripe.Backends{API: backend, Connect: backend, Uploads: backend}))
+			account, err := checkStripeKey(client.New("sk_test_x", &stripe.Backends{API: backend, Connect: backend, Uploads: backend}))
+			if account != tc.wantAccount {
+				t.Errorf("account = %q, want %q", account, tc.wantAccount)
+			}
 			switch {
 			case tc.wantErr == "" && err != nil:
 				t.Errorf("err = %v, want none", err)
@@ -52,7 +55,7 @@ func TestCheckStripeKey_UnreachableStripe(t *testing.T) {
 	backend := stripe.GetBackendWithConfig(stripe.APIBackend, &stripe.BackendConfig{
 		URL: stripe.String(url), MaxNetworkRetries: &zero, LeveledLogger: &stripe.LeveledLogger{Level: stripe.LevelNull},
 	})
-	err := checkStripeKey(context.Background(), client.New("sk_test_x", &stripe.Backends{API: backend, Connect: backend, Uploads: backend}))
+	_, err := checkStripeKey(client.New("sk_test_x", &stripe.Backends{API: backend, Connect: backend, Uploads: backend}))
 	if err == nil || !strings.Contains(err.Error(), "could not reach") {
 		t.Errorf("err = %v, want a could-not-reach error", err)
 	}

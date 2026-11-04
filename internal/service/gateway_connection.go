@@ -24,7 +24,7 @@ func (e GatewayConnectionValidationError) Error() string { return string(e) }
 // every write fails with domain.ErrGatewayVaultUnavailable so plaintext secrets
 // can never be persisted.
 type GatewayConnectionService struct {
-	checkStripeKey func(ctx context.Context, secret string) error // nil-safe
+	checkStripeKey func(ctx context.Context, secret string) (accountID string, err error) // nil-safe
 	repo           port.GatewayConnectionRepository
 	vault          *secretbox.Box
 	now            func() time.Time
@@ -35,8 +35,9 @@ func NewGatewayConnectionService(repo port.GatewayConnectionRepository, vault *s
 }
 
 // SetStripeKeyChecker makes Connect prove a Stripe secret key works before it
-// replaces the tenant's connection. nil skips the check.
-func (s *GatewayConnectionService) SetStripeKeyChecker(check func(ctx context.Context, secret string) error) {
+// replaces the tenant's connection, and lets it tell a key rotation from a move
+// to another account. nil skips both.
+func (s *GatewayConnectionService) SetStripeKeyChecker(check func(ctx context.Context, secret string) (string, error)) {
 	s.checkStripeKey = check
 }
 
@@ -146,12 +147,14 @@ func (s *GatewayConnectionService) Connect(ctx context.Context, tenantID uuid.UU
 		}
 	}
 
+	var newAccount string
 	if provider == domain.GatewayStripe {
 		if err := validateStripeKeys(mode, secret, publicKey); err != nil {
 			return nil, err
 		}
 		if s.checkStripeKey != nil {
-			if err := s.checkStripeKey(ctx, secret); err != nil {
+			var err error
+			if newAccount, err = s.checkStripeKey(ctx, secret); err != nil {
 				return nil, GatewayConnectionValidationError(err.Error())
 			}
 		}
@@ -171,6 +174,23 @@ func (s *GatewayConnectionService) Connect(ctx context.Context, tenantID uuid.UU
 	}
 
 	now := s.now().UTC()
+	existing, err := s.repo.GetActive(ctx, tenantID, provider)
+	if err != nil && !errors.Is(err, domain.ErrGatewayConnectionNotFound) {
+		return nil, err
+	}
+	if s.isKeyRotation(ctx, existing, mode, newAccount) {
+		existing.PublicKey = publicKey
+		existing.SecretKeyEnc = secretEnc
+		if webhookSecret != "" {
+			existing.WebhookSecretEnc = webhookEnc
+		}
+		existing.UpdatedAt = now
+		if err := s.repo.UpdateCredentials(ctx, existing); err != nil {
+			return nil, err
+		}
+		return existing, nil
+	}
+
 	conn := &domain.GatewayConnection{
 		ID:               uuid.New(),
 		TenantID:         tenantID,
@@ -187,6 +207,27 @@ func (s *GatewayConnectionService) Connect(ctx context.Context, tenantID uuid.UU
 		return nil, err
 	}
 	return conn, nil
+}
+
+// isKeyRotation reports whether new keys continue the existing connection. If
+// so it keeps its id, so the webhook URL registered at the gateway and the cards
+// saved against it keep working, and its webhook secret. A different mode or
+// Stripe account is a new connection: cards saved on the old account can't be
+// charged through the new one. An old key that can no longer be checked counts
+// as a rotation, since a revoked key is the usual reason for replacing one.
+func (s *GatewayConnectionService) isKeyRotation(ctx context.Context, existing *domain.GatewayConnection, mode domain.GatewayMode, newAccount string) bool {
+	if existing == nil || existing.Mode != mode {
+		return false
+	}
+	if existing.Provider != domain.GatewayStripe || s.checkStripeKey == nil || newAccount == "" {
+		return true
+	}
+	oldSecret, err := s.vault.Open(existing.SecretKeyEnc)
+	if err != nil || oldSecret == "" {
+		return true
+	}
+	oldAccount, err := s.checkStripeKey(ctx, oldSecret)
+	return err != nil || oldAccount == "" || oldAccount == newAccount
 }
 
 // List returns the tenant's active connections. Secrets stay sealed on the

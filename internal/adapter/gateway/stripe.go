@@ -25,30 +25,29 @@ func NewStripeGateway(apiKey string, webhookSecret string) *StripeGateway {
 	}
 }
 
-// CheckStripeSecretKey asks Stripe whether a secret key works. The returned
-// error is safe to show to the person connecting the key.
-func CheckStripeSecretKey(ctx context.Context, secret string) error {
-	return checkStripeKey(ctx, client.New(secret, nil))
+// CheckStripeSecretKey asks Stripe whether a secret key works and which account
+// it belongs to. The account is "" for a valid restricted key that can't read
+// it. The returned error is safe to show to the person connecting the key.
+func CheckStripeSecretKey(_ context.Context, secret string) (string, error) {
+	return checkStripeKey(client.New(secret, nil))
 }
 
-func checkStripeKey(ctx context.Context, sc *client.API) error {
-	params := &stripe.BalanceParams{}
-	params.Context = ctx
-	_, err := sc.Balance.Get(params)
+func checkStripeKey(sc *client.API) (string, error) {
+	account, err := sc.Accounts.Get()
 	if err == nil {
-		return nil
+		return account.ID, nil
 	}
 	var se *stripe.Error
 	if !errors.As(err, &se) {
-		return errors.New("could not reach Stripe to check this key — please try again")
+		return "", errors.New("could not reach Stripe to check this key — please try again")
 	}
 	switch se.HTTPStatusCode {
 	case http.StatusUnauthorized:
-		return errors.New("this secret key was rejected by Stripe — check it and try again")
+		return "", errors.New("this secret key was rejected by Stripe — check it and try again")
 	case http.StatusForbidden:
-		return nil // a valid restricted key without balance access
+		return "", nil // a valid restricted key without account access
 	default:
-		return errors.New("could not check this key with Stripe — please try again")
+		return "", errors.New("could not check this key with Stripe — please try again")
 	}
 }
 

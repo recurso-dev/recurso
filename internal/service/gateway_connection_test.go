@@ -36,6 +36,12 @@ func (f *fakeGatewayConnRepo) Upsert(_ context.Context, conn *domain.GatewayConn
 	return nil
 }
 
+func (f *fakeGatewayConnRepo) UpdateCredentials(_ context.Context, conn *domain.GatewayConnection) error {
+	cp := *conn
+	f.byID[conn.ID] = &cp
+	return nil
+}
+
 func (f *fakeGatewayConnRepo) GetByID(_ context.Context, id uuid.UUID) (*domain.GatewayConnection, error) {
 	if c, ok := f.byID[id]; ok {
 		return c, nil
@@ -314,12 +320,12 @@ func TestConnectStripeKeepsTheWorkingConnectionWhenTheNewKeyFails(t *testing.T) 
 	good := ConnectInput{Provider: "stripe", Mode: "test", PublicKey: "pk_test_a", SecretKey: "sk_test_good"}
 
 	var checked []string
-	svc.SetStripeKeyChecker(func(_ context.Context, secret string) error {
+	svc.SetStripeKeyChecker(func(_ context.Context, secret string) (string, error) {
 		checked = append(checked, secret)
 		if secret != "sk_test_good" {
-			return errors.New("Stripe rejected this secret key")
+			return "", errors.New("Stripe rejected this secret key")
 		}
-		return nil
+		return "acct_1", nil
 	})
 	before, err := svc.Connect(ctx, tenant, good)
 	if err != nil {
@@ -345,4 +351,104 @@ func TestConnectStripeKeepsTheWorkingConnectionWhenTheNewKeyFails(t *testing.T) 
 	if len(checked) != 2 {
 		t.Errorf("checker ran for another provider: %v", checked)
 	}
+}
+
+func TestConnectKeepsTheConnectionOnlyForAKeyRotation(t *testing.T) {
+	accounts := map[string]string{
+		"sk_test_a1": "acct_a", "sk_test_a2": "acct_a", "sk_live_a": "acct_a",
+		"sk_test_b": "acct_b", "rk_test_noaccess": "",
+	}
+	checker := func(_ context.Context, secret string) (string, error) {
+		if secret == "sk_test_revoked" {
+			return "", errors.New("rejected")
+		}
+		return accounts[secret], nil
+	}
+	stripeKey := func(mode, secret string) ConnectInput {
+		return ConnectInput{Provider: "stripe", Mode: mode, PublicKey: "pk_" + mode + "_a", SecretKey: secret}
+	}
+
+	for _, tc := range []struct {
+		name         string
+		first, next  ConnectInput
+		wantSameConn bool
+	}{
+		{"a new key on the same account", stripeKey("test", "sk_test_a1"), stripeKey("test", "sk_test_a2"), true},
+		{"a restricted key that can't name its account", stripeKey("test", "sk_test_a1"), stripeKey("test", "rk_test_noaccess"), true},
+		{"another Stripe account", stripeKey("test", "sk_test_a1"), stripeKey("test", "sk_test_b"), false},
+		{"test mode to live mode", stripeKey("test", "sk_test_a1"), stripeKey("live", "sk_live_a"), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := NewGatewayConnectionService(newFakeGatewayConnRepo(), testVault(t))
+			svc.SetStripeKeyChecker(checker)
+			tenant, ctx := uuid.New(), context.Background()
+			first := tc.first
+			first.WebhookSecret = "whsec_original"
+			before, err := svc.Connect(ctx, tenant, first)
+			if err != nil {
+				t.Fatalf("first connect: %v", err)
+			}
+			after, err := svc.Connect(ctx, tenant, tc.next)
+			if err != nil {
+				t.Fatalf("second connect: %v", err)
+			}
+			if got := after.ID == before.ID; got != tc.wantSameConn {
+				t.Fatalf("same connection = %v, want %v", got, tc.wantSameConn)
+			}
+			secret, err := svc.OpenSecret(after)
+			if err != nil || secret != tc.next.SecretKey {
+				t.Errorf("secret = %q, err = %v, want the new key", secret, err)
+			}
+			webhook, err := svc.OpenWebhookSecret(after)
+			if err != nil {
+				t.Fatalf("open webhook secret: %v", err)
+			}
+			if tc.wantSameConn && webhook != "whsec_original" {
+				t.Errorf("webhook secret = %q, want it kept", webhook)
+			}
+			if !tc.wantSameConn && webhook != "" {
+				t.Errorf("webhook secret = %q, want none on a new connection", webhook)
+			}
+			active, err := svc.GetActive(ctx, tenant, domain.GatewayStripe)
+			if err != nil || active == nil || active.ID != after.ID {
+				t.Errorf("active = %+v, err = %v, want %s", active, err, after.ID)
+			}
+		})
+	}
+
+	t.Run("a revoked old key counts as a rotation", func(t *testing.T) {
+		svc := NewGatewayConnectionService(newFakeGatewayConnRepo(), testVault(t))
+		tenant, ctx := uuid.New(), context.Background()
+		before, err := svc.Connect(ctx, tenant, stripeKey("test", "sk_test_revoked"))
+		if err != nil {
+			t.Fatalf("first connect: %v", err)
+		}
+		svc.SetStripeKeyChecker(checker)
+		after, err := svc.Connect(ctx, tenant, stripeKey("test", "sk_test_a1"))
+		if err != nil {
+			t.Fatalf("second connect: %v", err)
+		}
+		if after.ID != before.ID {
+			t.Error("a revoked key's replacement got a new connection")
+		}
+	})
+
+	t.Run("a webhook secret sent with the new key replaces the old one", func(t *testing.T) {
+		svc := NewGatewayConnectionService(newFakeGatewayConnRepo(), testVault(t))
+		tenant, ctx := uuid.New(), context.Background()
+		first := stripeKey("test", "sk_test_a1")
+		first.WebhookSecret = "whsec_original"
+		if _, err := svc.Connect(ctx, tenant, first); err != nil {
+			t.Fatalf("first connect: %v", err)
+		}
+		next := stripeKey("test", "sk_test_a2")
+		next.WebhookSecret = "whsec_new"
+		after, err := svc.Connect(ctx, tenant, next)
+		if err != nil {
+			t.Fatalf("second connect: %v", err)
+		}
+		if webhook, _ := svc.OpenWebhookSecret(after); webhook != "whsec_new" {
+			t.Errorf("webhook secret = %q, want whsec_new", webhook)
+		}
+	})
 }
