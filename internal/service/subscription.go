@@ -417,6 +417,7 @@ func (s *SubscriptionService) CreateSubscription(ctx context.Context, input Crea
 		DueDate:        dueDate,
 		PaidAt:         nil,
 	}
+	settleIfNothingOwed(invoice)
 
 	// P25 e-invoicing is deferred to AFTER the subscription + invoice commit
 	// (below), so a rolled-back create can't orphan an irreversible government IRN
