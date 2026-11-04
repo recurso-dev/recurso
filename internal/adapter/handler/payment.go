@@ -55,6 +55,10 @@ func (h *PaymentHandler) CreateOrder(c *gin.Context) {
 		respondError(c, http.StatusBadRequest, codeInvoiceAlreadyPaid, "invoice is already paid")
 		return
 	}
+	if invoice.Status == domain.InvoiceStatusVoid {
+		respondError(c, http.StatusConflict, codeConflict, "invoice has been voided")
+		return
+	}
 
 	// Collect only what's still owed, net of any wallet drain and credit applied.
 	amountDue := checkoutAmountDue(invoice)

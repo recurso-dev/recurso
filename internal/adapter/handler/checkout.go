@@ -228,6 +228,10 @@ func (h *CheckoutHandler) InitiatePayment(c *gin.Context) {
 		respondError(c, http.StatusBadRequest, codeInvoiceAlreadyPaid, "invoice already paid")
 		return
 	}
+	if invoice.Status == domain.InvoiceStatusVoid {
+		respondError(c, http.StatusConflict, codeConflict, "invoice has been voided")
+		return
+	}
 
 	// Collect only what's still owed: Total net of any wallet drain and account
 	// credit already applied (mirrors the renewal and retry charges).
@@ -413,6 +417,10 @@ func (h *CheckoutHandler) CheckoutSuccess(c *gin.Context) {
 		// the webhook also sets this).
 		_ = h.invoiceRepo.SetGatewayPaymentID(ctx, invoice.TenantID, invoice.ID, st.PaymentID)
 	}
+	if invoice.Status == domain.InvoiceStatusVoid {
+		respondCheckoutStatus(c, invoice, "void")
+		return
+	}
 	h.autopay.Save(tenantCtx, invoice, paymentIntentID)
 
 	respondCheckoutStatus(c, invoice, "paid")
@@ -503,6 +511,10 @@ func (h *CheckoutHandler) RazorpayVerify(c *gin.Context) {
 	}
 	if req.PaymentID != "" {
 		_ = h.invoiceRepo.SetGatewayPaymentID(ctx, invoice.TenantID, invoice.ID, req.PaymentID)
+	}
+	if invoice.Status == domain.InvoiceStatusVoid {
+		respondCheckoutStatus(c, invoice, "void")
+		return
 	}
 
 	respondCheckoutStatus(c, invoice, "paid")

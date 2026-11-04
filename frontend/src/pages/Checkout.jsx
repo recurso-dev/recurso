@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button";
 // must live inside <Elements>. On a card success it settles inline; methods
 // that need a bank redirect come back to this page's return_url, where the
 // parent verifies via ?payment_intent.
-function PaymentForm({ invoice, onPaid, onProcessing }) {
+function PaymentForm({ invoice, onPaid, onProcessing, onVoid }) {
   const stripe = useStripe();
   const elements = useElements();
   const { id } = useParams();
@@ -34,6 +34,8 @@ function PaymentForm({ invoice, onPaid, onProcessing }) {
     const data = await res.json().catch(() => ({}));
     if (res.ok && data.data?.status === "paid") {
       onPaid();
+    } else if (data.data?.status === "void") {
+      onVoid();
     } else if (data.data?.status === "failed") {
       setError("Payment could not be completed. Please try another method.");
     } else {
@@ -127,6 +129,7 @@ export default function Checkout() {
       .then((data) => {
         setInvoice(data.data);
         if (data.data.status === "paid") setStatus("paid");
+        if (data.data.status === "void") setStatus("void");
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
@@ -144,6 +147,7 @@ export default function Checkout() {
       .then((res) => res.json())
       .then((data) => {
         if (data.data?.status === "paid") setStatus("paid");
+        else if (data.data?.status === "void") setStatus("void");
         else if (data.data?.status === "failed") setStatus("failed");
         else setStatus("processing");
       })
@@ -208,6 +212,8 @@ export default function Checkout() {
         const body = await vres.json().catch(() => ({}));
         if (vres.ok && body.data?.status === "paid") {
           setStatus("paid");
+        } else if (body.data?.status === "void") {
+          setStatus("void");
         } else {
           setError(
             body?.error?.message ||
@@ -284,6 +290,22 @@ export default function Checkout() {
             Invoice {invoice?.invoice_number} has been paid.
           </p>
           <p className="mt-4 text-xs text-subtle">You can close this page.</p>
+        </div>
+      </CheckoutShell>
+    );
+  }
+
+  if (status === "void") {
+    return (
+      <CheckoutShell>
+        <div className="text-center">
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+            This invoice has been voided
+          </h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Invoice {invoice?.invoice_number} no longer needs payment. If you were
+            charged for it, please contact the seller for a refund.
+          </p>
         </div>
       </CheckoutShell>
     );
@@ -387,6 +409,7 @@ export default function Checkout() {
             invoice={invoice}
             onPaid={() => setStatus("paid")}
             onProcessing={() => setStatus("processing")}
+            onVoid={() => setStatus("void")}
           />
           {savesPaymentMethod && (
             <p className="mt-3 text-center text-xs text-subtle">

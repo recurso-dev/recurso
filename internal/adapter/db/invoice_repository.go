@@ -417,7 +417,7 @@ func (r *InvoiceRepository) MarkPaid(ctx context.Context, tenantID, invoiceID uu
 	res, err := r.db.ExecContext(ctx, `
 		UPDATE invoices
 		SET status = 'paid', amount_paid = total - credit_applied, paid_at = $2, updated_at = NOW()
-		WHERE id = $1 AND tenant_id = $3 AND status <> 'paid'
+		WHERE id = $1 AND tenant_id = $3 AND status NOT IN ('paid', 'void')
 	`, invoiceID, paidAt, tenantID)
 	if err != nil {
 		return false, fmt.Errorf("failed to mark invoice paid: %w", err)
