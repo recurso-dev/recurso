@@ -28,6 +28,15 @@ func (s *SubscriptionService) MarkInvoicePaid(ctx context.Context, invoiceID uui
 		return false, nil // Already paid
 	}
 
+	// A void invoice owes nothing, so it never becomes paid. Money can still
+	// arrive for one (a payment in flight when it was voided); that needs a person
+	// to refund it, and the gateway must not be made to redeliver forever.
+	if inv.Status == domain.InvoiceStatusVoid {
+		s.logger.ErrorContext(ctx, "payment received on a void invoice — needs refund or review",
+			"invoice_id", inv.ID, "invoice_number", inv.InvoiceNumber, "tenant_id", inv.TenantID)
+		return false, nil
+	}
+
 	// Amount already settled by a non-cash channel before this payment — today
 	// only a prepaid wallet drain at invoice generation writes amount_paid ahead
 	// of settlement (partial offline payments leave the invoice open without

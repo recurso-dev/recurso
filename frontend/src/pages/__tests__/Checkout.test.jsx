@@ -76,6 +76,15 @@ describe("Checkout (money-critical public flow)", () => {
         await waitFor(() => expect(screen.getByText(/paid/i)).toBeInTheDocument());
     });
 
+    it("offers no way to pay a void invoice", async () => {
+        global.fetch = vi.fn(() =>
+            Promise.resolve({ ok: true, json: () => Promise.resolve({ data: invoice({ status: "void" }) }) })
+        );
+        renderAt("inv_void");
+        expect(await screen.findByText(/has been voided/i)).toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: /pay/i })).not.toBeInTheDocument();
+    });
+
     describe("telling the customer their card will be saved", () => {
         const startPayment = async (saves) => {
             global.fetch = vi.fn((url, opts) => {
