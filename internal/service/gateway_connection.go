@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -23,13 +24,41 @@ func (e GatewayConnectionValidationError) Error() string { return string(e) }
 // every write fails with domain.ErrGatewayVaultUnavailable so plaintext secrets
 // can never be persisted.
 type GatewayConnectionService struct {
-	repo  port.GatewayConnectionRepository
-	vault *secretbox.Box
-	now   func() time.Time
+	checkStripeKey func(ctx context.Context, secret string) error // nil-safe
+	repo           port.GatewayConnectionRepository
+	vault          *secretbox.Box
+	now            func() time.Time
 }
 
 func NewGatewayConnectionService(repo port.GatewayConnectionRepository, vault *secretbox.Box) *GatewayConnectionService {
 	return &GatewayConnectionService{repo: repo, vault: vault, now: time.Now}
+}
+
+// SetStripeKeyChecker makes Connect prove a Stripe secret key works before it
+// replaces the tenant's connection. nil skips the check.
+func (s *GatewayConnectionService) SetStripeKeyChecker(check func(ctx context.Context, secret string) error) {
+	s.checkStripeKey = check
+}
+
+// validateStripeKeys rejects Stripe keys that cannot work in the chosen mode.
+// Replacing a working connection with one of these stops checkout for every buyer.
+func validateStripeKeys(mode domain.GatewayMode, secret, publicKey string) error {
+	if strings.HasPrefix(secret, "pk_") {
+		return GatewayConnectionValidationError("this is a publishable key — paste the secret key (sk_...)")
+	}
+	wrong, other := "_live_", "live"
+	if mode == domain.GatewayModeLive {
+		wrong, other = "_test_", "test"
+	}
+	for _, prefix := range []string{"sk" + wrong, "rk" + wrong} {
+		if strings.HasPrefix(secret, prefix) {
+			return GatewayConnectionValidationError(fmt.Sprintf("this is a %s secret key — switch mode to %s, or use a %s key", other, other, mode))
+		}
+	}
+	if strings.HasPrefix(publicKey, "pk"+wrong) {
+		return GatewayConnectionValidationError(fmt.Sprintf("this is a %s publishable key — switch mode to %s, or use a %s key", other, other, mode))
+	}
+	return nil
 }
 
 // VaultReady reports whether credential storage is available (an encryption key
@@ -114,6 +143,17 @@ func (s *GatewayConnectionService) Connect(ctx context.Context, tenantID uuid.UU
 		}
 		if mode == domain.GatewayModeLive && strings.HasPrefix(secret, "sandbox_") {
 			return nil, GatewayConnectionValidationError("this is a sandbox_ token — switch mode to test, or create a live token at manage.gocardless.com")
+		}
+	}
+
+	if provider == domain.GatewayStripe {
+		if err := validateStripeKeys(mode, secret, publicKey); err != nil {
+			return nil, err
+		}
+		if s.checkStripeKey != nil {
+			if err := s.checkStripeKey(ctx, secret); err != nil {
+				return nil, GatewayConnectionValidationError(err.Error())
+			}
 		}
 	}
 

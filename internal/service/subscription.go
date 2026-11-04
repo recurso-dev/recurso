@@ -540,7 +540,9 @@ func (s *SubscriptionService) CreateSubscription(ctx context.Context, input Crea
 
 	// Send subscription created notification
 	if s.notificationService != nil {
+		paymentDue := !isTrial && invoicePayable(invoice)
 		err := s.notificationService.SendSubscriptionCreated(ctx, SubscriptionData{
+			PaymentDue:      paymentDue,
 			CustomerName:    domain.PtrToString(customer.Name),
 			CustomerEmail:   customer.Email,
 			PlanName:        plan.Name,
@@ -551,6 +553,13 @@ func (s *SubscriptionService) CreateSubscription(ctx context.Context, input Crea
 		})
 		if err != nil {
 			s.logger.ErrorContext(ctx, "failed to send subscription created notification", "error", err, "subscription_id", subID)
+		}
+		// The first invoice is not charged automatically, so this is how the
+		// customer learns to pay it.
+		if paymentDue {
+			if err := s.notificationService.SendInvoiceCreated(ctx, invoiceEmailData(invoice, customer)); err != nil {
+				s.logger.ErrorContext(ctx, "failed to send first invoice email", "error", err, "invoice_id", invID)
+			}
 		}
 	}
 

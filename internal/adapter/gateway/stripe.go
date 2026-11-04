@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 
 	"github.com/recurso-dev/recurso/internal/core/port"
@@ -21,6 +22,33 @@ func NewStripeGateway(apiKey string, webhookSecret string) *StripeGateway {
 	return &StripeGateway{
 		sc:            client.New(apiKey, nil),
 		webhookSecret: webhookSecret,
+	}
+}
+
+// CheckStripeSecretKey asks Stripe whether a secret key works. The returned
+// error is safe to show to the person connecting the key.
+func CheckStripeSecretKey(ctx context.Context, secret string) error {
+	return checkStripeKey(ctx, client.New(secret, nil))
+}
+
+func checkStripeKey(ctx context.Context, sc *client.API) error {
+	params := &stripe.BalanceParams{}
+	params.Context = ctx
+	_, err := sc.Balance.Get(params)
+	if err == nil {
+		return nil
+	}
+	var se *stripe.Error
+	if !errors.As(err, &se) {
+		return errors.New("could not reach Stripe to check this key — please try again")
+	}
+	switch se.HTTPStatusCode {
+	case http.StatusUnauthorized:
+		return errors.New("this secret key was rejected by Stripe — check it and try again")
+	case http.StatusForbidden:
+		return nil // a valid restricted key without balance access
+	default:
+		return errors.New("could not check this key with Stripe — please try again")
 	}
 }
 

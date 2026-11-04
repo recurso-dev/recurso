@@ -187,15 +187,8 @@ func (s *SubscriptionService) ConvertTrialToActive(ctx context.Context, sub *dom
 		"subscription_id", sub.ID, "invoice_id", invID, "amount", total)
 
 	// Notify the customer that their first invoice is due (best-effort).
-	if s.notificationService != nil {
-		if err := s.notificationService.SendInvoiceCreated(ctx, InvoiceData{
-			CustomerName:  domain.PtrToString(customer.Name),
-			CustomerEmail: customer.Email,
-			InvoiceNumber: invoice.InvoiceNumber,
-			InvoiceID:     invoice.ID.String(),
-			Amount:        formatAmount(total, price.Currency),
-			DueDate:       dueDate.Format("Jan 02, 2006"),
-		}); err != nil {
+	if s.notificationService != nil && invoicePayable(invoice) {
+		if err := s.notificationService.SendInvoiceCreated(ctx, invoiceEmailData(invoice, customer)); err != nil {
 			s.logger.ErrorContext(ctx, "failed to send trial conversion invoice notification", "error", err, "invoice_id", invID)
 		}
 	}

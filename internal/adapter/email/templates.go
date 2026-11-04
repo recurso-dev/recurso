@@ -198,7 +198,7 @@ const PaymentReceivedTemplate = `
 const SubscriptionCreatedTemplate = `
 <h1>Welcome to {{.PlanName}}!</h1>
 <p>Hello {{.CustomerName}},</p>
-<p>Your subscription has been activated successfully.</p>
+{{if .PaymentDue}}<p>Your subscription has started. Your first invoice is in a separate email, with a link to pay it.</p>{{else}}<p>Your subscription has been activated successfully.</p>{{end}}
 
 <div class="info-box">
     <div class="info-row">

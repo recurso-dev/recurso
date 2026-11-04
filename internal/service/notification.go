@@ -140,6 +140,7 @@ type SubscriptionData struct {
 	StartDate       string
 	NextBillingDate string
 	PortalURL       string
+	PaymentDue      bool // the first invoice is unpaid, and emailed separately
 }
 
 // SendSubscriptionCreated sends a subscription confirmation
