@@ -590,6 +590,10 @@ func (UnimplementedGatewayConnectionRepository) Upsert(context.Context, *domain.
 	panic("porttest: GatewayConnectionRepository.Upsert is not implemented")
 }
 
+func (UnimplementedGatewayConnectionRepository) UpdateCredentials(context.Context, *domain.GatewayConnection) error {
+	panic("porttest: GatewayConnectionRepository.UpdateCredentials is not implemented")
+}
+
 func (UnimplementedGatewayConnectionRepository) GetByID(context.Context, uuid.UUID) (*domain.GatewayConnection, error) {
 	panic("porttest: GatewayConnectionRepository.GetByID is not implemented")
 }

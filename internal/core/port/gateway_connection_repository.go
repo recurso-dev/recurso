@@ -14,6 +14,9 @@ type GatewayConnectionRepository interface {
 	// Upsert inserts or replaces the tenant's active connection for a provider
 	// (keyed by the partial-unique (tenant, provider) WHERE active index).
 	Upsert(ctx context.Context, conn *domain.GatewayConnection) error
+	// UpdateCredentials replaces the keys on an active connection in place,
+	// keeping its id.
+	UpdateCredentials(ctx context.Context, conn *domain.GatewayConnection) error
 	// GetByID resolves a single connection, used by per-connection webhook
 	// routing. Returns domain.ErrGatewayConnectionNotFound when absent.
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.GatewayConnection, error)

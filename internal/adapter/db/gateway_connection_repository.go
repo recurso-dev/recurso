@@ -64,6 +64,17 @@ func (r *GatewayConnectionRepository) Upsert(ctx context.Context, conn *domain.G
 	return tx.Commit()
 }
 
+// UpdateCredentials replaces the keys on an existing connection in place, so its
+// id (and so its webhook URL and saved cards) survives.
+func (r *GatewayConnectionRepository) UpdateCredentials(ctx context.Context, conn *domain.GatewayConnection) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE gateway_connections
+		 SET public_key = $1, secret_key_enc = $2, webhook_secret_enc = $3, updated_at = $4
+		 WHERE id = $5 AND tenant_id = $6 AND active`,
+		conn.PublicKey, conn.SecretKeyEnc, conn.WebhookSecretEnc, conn.UpdatedAt, conn.ID, conn.TenantID)
+	return err
+}
+
 func (r *GatewayConnectionRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.GatewayConnection, error) {
 	return scanGatewayConn(r.db.QueryRowContext(ctx,
 		`SELECT `+gatewayConnCols+` FROM gateway_connections WHERE id = $1`, id))
