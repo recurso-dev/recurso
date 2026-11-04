@@ -794,7 +794,8 @@ func (r *InvoiceRepository) GetOverdueInvoices(ctx context.Context) ([]domain.Ov
 			i.id, i.tenant_id, i.customer_id,
 			c.name as customer_name, c.email as customer_email,
 			i.invoice_number, i.total as amount, i.currency,
-			i.due_date, i.retry_count, i.next_retry_at, (i.mandate_cycle_key IS NOT NULL)
+			i.due_date, i.retry_count, i.next_retry_at, (i.mandate_cycle_key IS NOT NULL),
+			(COALESCE(c.stripe_customer_id, '') <> '' AND COALESCE(c.default_payment_method, '') <> '')
 		FROM invoices i
 		JOIN customers c ON i.customer_id = c.id
 		WHERE i.status IN ('open', 'past_due')
@@ -842,7 +843,8 @@ func (r *InvoiceRepository) ClaimOverdueForDunning(ctx context.Context, lease ti
 		SELECT i.id, i.tenant_id, i.customer_id,
 		       c.name AS customer_name, c.email AS customer_email,
 		       i.invoice_number, i.total AS amount, i.currency,
-		       i.due_date, i.retry_count, i.next_retry_at, i.is_mandate
+		       i.due_date, i.retry_count, i.next_retry_at, i.is_mandate,
+		       (COALESCE(c.stripe_customer_id, '') <> '' AND COALESCE(c.default_payment_method, '') <> '')
 		FROM claimed i
 		JOIN customers c ON i.customer_id = c.id
 		ORDER BY i.due_date ASC`
@@ -866,7 +868,7 @@ func scanOverdueInvoices(rows *sql.Rows) ([]domain.OverdueInvoice, error) {
 			&inv.ID, &inv.TenantID, &inv.CustomerID,
 			&name, &inv.CustomerEmail,
 			&inv.InvoiceNumber, &inv.Amount, &inv.Currency,
-			&inv.DueDate, &inv.RetryCount, &inv.NextRetryAt, &inv.IsMandate,
+			&inv.DueDate, &inv.RetryCount, &inv.NextRetryAt, &inv.IsMandate, &inv.HasSavedCard,
 		); err != nil {
 			return nil, err
 		}

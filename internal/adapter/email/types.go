@@ -22,6 +22,9 @@ type DunningEmailData struct {
 	NextRetryDate    string
 	PayNowURL        string
 	UpdatePaymentURL string
+	// ChargeAttempted is false when the customer has no saved payment method:
+	// the email must not claim a charge failed when none was tried.
+	ChargeAttempted bool
 }
 
 // TrialEndingEmailData contains data for trial-ending reminder emails
