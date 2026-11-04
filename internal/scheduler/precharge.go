@@ -115,14 +115,21 @@ func (s *PreChargeScheduler) runPreChargeNotifications() {
 
 	for _, sub := range subscriptions {
 		// Send pre-charge reminder email
+		paymentMethod := ""
+		if sub.HasSavedCard {
+			paymentMethod = "Saved card"
+			if sub.PaymentMethodLast4 != "" {
+				paymentMethod = "•••• " + sub.PaymentMethodLast4
+			}
+		}
 		data := email.PreChargeEmailData{
 			CustomerName:  sub.CustomerName,
 			CustomerEmail: sub.CustomerEmail,
 			PlanName:      sub.PlanName,
 			Amount:        formatAmount(sub.Amount, sub.Currency),
 			ChargeDate:    sub.NextBillingDate,
-			PaymentMethod: "•••• " + sub.PaymentMethodLast4,
-			PortalURL:     s.portalBaseURL + "/portal",
+			PaymentMethod: paymentMethod,
+			PortalURL:     s.portalBaseURL + "/portal/login",
 		}
 
 		if err := s.notificationSvc.SendPreChargeReminder(ctx, data); err != nil {

@@ -53,7 +53,12 @@ export default function OnboardingChecklist() {
     retry: false,
   });
 
-  const count = (res) => (res?.data?.data || res?.data || []).length;
+  // Lists come back as { data: [...] }; gateway connections as
+  // { data: { connections: [...] } }.
+  const count = (res) => {
+    const body = res?.data?.data || res?.data;
+    return (body?.connections || body || []).length;
+  };
 
   const steps = [
     {

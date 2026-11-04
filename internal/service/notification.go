@@ -455,6 +455,9 @@ func (s *NotificationService) SendDunningEmail(ctx context.Context, level int, d
 	case 1:
 		tmplStr = email.DunningFirstReminderTemplate
 		subject = "Action Required: Payment Failed"
+		if !data.ChargeAttempted {
+			subject = fmt.Sprintf("Payment Due: Invoice %s", data.InvoiceNumber)
+		}
 	case 2:
 		tmplStr = email.DunningSecondReminderTemplate
 		subject = "⚠️ Payment Still Pending - Action Required"

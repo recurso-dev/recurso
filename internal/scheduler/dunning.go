@@ -273,6 +273,7 @@ func (s *DunningScheduler) processInvoice(ctx context.Context, invoice domain.Ov
 		// /portal/payment-methods paths never existed.
 		PayNowURL:        fmt.Sprintf("%s/checkout/%s", s.portalBaseURL, invoice.ID),
 		UpdatePaymentURL: s.portalBaseURL + "/portal/login",
+		ChargeAttempted:  invoice.HasSavedCard || invoice.IsMandate,
 	}
 
 	if err := s.notificationSvc.SendDunningEmail(ctx, level, data); err != nil {

@@ -471,6 +471,15 @@ const PortalDashboard = () => {
                         </TableCell>
                         <TableCell className="pr-6 text-right">
                           <div className="flex items-center justify-end gap-3">
+                            {["open", "past_due"].includes(invoice.status) && (
+                              <a
+                                href={`/checkout/${invoice.id}`}
+                                className="inline-flex items-center gap-1 text-sm font-medium text-primary transition-colors hover:text-primary/80"
+                              >
+                                <CreditCard className="h-3.5 w-3.5" />
+                                Pay
+                              </a>
+                            )}
                             <button
                               type="button"
                               onClick={() => openDisputeDialog(invoice)}

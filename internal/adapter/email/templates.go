@@ -325,13 +325,13 @@ const PreChargeReminderTemplate = `
         <span class="info-label">Charge Date</span>
         <span class="info-value">{{.ChargeDate}}</span>
     </div>
-    <div class="info-row">
+    {{if .PaymentMethod}}<div class="info-row">
         <span class="info-label">Payment Method</span>
         <span class="info-value">{{.PaymentMethod}}</span>
-    </div>
+    </div>{{end}}
 </div>
 
-<p>No action is needed if you wish to continue your subscription.</p>
+{{if .PaymentMethod}}<p>No action is needed if you wish to continue your subscription.</p>{{else}}<p>We don't have a payment method on file, so we'll email you an invoice to pay when your subscription renews.</p>{{end}}
 
 <p>If you wish to cancel or modify your subscription before renewal:</p>
 
@@ -339,9 +339,9 @@ const PreChargeReminderTemplate = `
     <a href="{{.PortalURL}}" class="btn">Manage Subscription</a>
 </p>
 
-<p style="font-size: 12px; color: #64748b;">
+{{if .PaymentMethod}}<p style="font-size: 12px; color: #64748b;">
     By continuing your subscription, you authorize us to charge your payment method on the date shown above.
-</p>
+</p>{{end}}
 `
 
 // TrialEndingTemplate reminds a customer that their free trial is about to end
@@ -375,9 +375,9 @@ const TrialEndingTemplate = `
 
 // DunningFirstReminderTemplate for first payment retry reminder (Day 1)
 const DunningFirstReminderTemplate = `
-<h1>Action Required: Payment Failed</h1>
+{{if .ChargeAttempted}}<h1>Action Required: Payment Failed</h1>{{else}}<h1>Your Invoice Is Due</h1>{{end}}
 <p>Hello {{.CustomerName}},</p>
-<p>We attempted to charge your payment method but it was unsuccessful.</p>
+{{if .ChargeAttempted}}<p>We attempted to charge your payment method but it was unsuccessful.</p>{{else}}<p>Your invoice is ready to be paid.</p>{{end}}
 
 <div class="info-box">
     <div class="info-row">
@@ -388,13 +388,17 @@ const DunningFirstReminderTemplate = `
         <span class="info-label">Invoice</span>
         <span class="info-value">{{.InvoiceNumber}}</span>
     </div>
-    <div class="info-row">
+    {{if .ChargeAttempted}}<div class="info-row">
         <span class="info-label">Next Retry</span>
         <span class="info-value">{{.NextRetryDate}}</span>
-    </div>
+    </div>{{end}}
 </div>
 
-<p><strong>What to do:</strong></p>
+<p style="text-align: center;">
+    <a href="{{.PayNowURL}}" class="btn">Pay Now</a>
+</p>
+{{if .ChargeAttempted}}
+<p><strong>Or fix the payment method on file:</strong></p>
 <ul>
     <li>Update your payment method if your card has expired</li>
     <li>Ensure sufficient funds are available</li>
@@ -402,17 +406,17 @@ const DunningFirstReminderTemplate = `
 </ul>
 
 <p style="text-align: center;">
-    <a href="{{.UpdatePaymentURL}}" class="btn">Update Payment Method</a>
+    <a href="{{.UpdatePaymentURL}}">Update Payment Method</a>
 </p>
 
 <p>We'll automatically retry the payment on {{.NextRetryDate}}.</p>
-`
+{{end}}`
 
 // DunningSecondReminderTemplate for second payment retry reminder (Day 3)
 const DunningSecondReminderTemplate = `
 <h1>⚠️ Payment Still Pending</h1>
 <p>Hello {{.CustomerName}},</p>
-<p>We've tried to process your payment <strong>{{.RetryCount}} times</strong> without success.</p>
+{{if .ChargeAttempted}}<p>We've tried to process your payment <strong>{{.RetryCount}} times</strong> without success.</p>{{else}}<p>Invoice {{.InvoiceNumber}} is still unpaid.</p>{{end}}
 
 <div class="info-box" style="border-left: 4px solid #f59e0b;">
     <div class="info-row">
@@ -442,7 +446,7 @@ const DunningSecondReminderTemplate = `
 const DunningFinalNoticeTemplate = `
 <h1>🚨 Final Notice: Payment Overdue</h1>
 <p>Hello {{.CustomerName}},</p>
-<p>Despite multiple attempts, we have been unable to collect payment for your account.</p>
+{{if .ChargeAttempted}}<p>Despite multiple attempts, we have been unable to collect payment for your account.</p>{{else}}<p>Invoice {{.InvoiceNumber}} is still unpaid.</p>{{end}}
 
 <div class="info-box" style="border-left: 4px solid #ef4444;">
     <div class="info-row">

@@ -197,6 +197,9 @@ type OverdueInvoice struct {
 	// mandate_cycle_key). The dunning worker's gateway retry can't collect one, so
 	// the scheduler keeps it on email dunning instead (ENG-168).
 	IsMandate bool
+	// HasSavedCard marks a customer whose card renewals charge automatically.
+	// Without one, nothing has tried to collect this invoice.
+	HasSavedCard bool
 }
 
 // CollectionsQueueItem is one currently-failing invoice as shown on the

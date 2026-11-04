@@ -76,6 +76,14 @@ func init() {
 	}
 }
 
+// appBaseURL is where the SPA is served. Every link a person clicks in an email
+// (hosted checkout, customer portal, dashboard pages) is an SPA route that the
+// API does not serve, so these never use BASE_URL unless nothing else is set, as
+// in local dev.
+func appBaseURL(baseURL string) string {
+	return getEnvDefault("DASHBOARD_URL", getEnvDefault("PORTAL_URL", baseURL))
+}
+
 func getEnvDefault(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
@@ -208,7 +216,9 @@ func main() {
 		log.Println("Using Console Email Sender (emails are logged, not sent — set SMTP_HOST for real delivery)")
 	}
 	baseURL := getEnvDefault("BASE_URL", "http://localhost:8080")
+	appURL := appBaseURL(baseURL)
 	notificationService := service.NewNotificationService(emailSender, baseURL)
+	notificationService.SetAppBaseURL(appURL)
 	// notificationService is wired to subscriptionService, webhookHandler, schedulers, and cancellationHandler below
 
 	// Ledger (P5) — dual-write: PG (always) + TigerBeetle (optional)
@@ -521,9 +531,8 @@ func main() {
 		}
 	}
 	// Phase 2 auth: password reset + TOTP MFA. The reset link points at the
-	// admin dashboard (DASHBOARD_URL), falling back to the API base URL for dev.
-	dashboardURL := getEnvDefault("DASHBOARD_URL", baseURL)
-	authService.ConfigurePasswordReset(passwordResetRepo, notificationService, dashboardURL)
+	// admin dashboard.
+	authService.ConfigurePasswordReset(passwordResetRepo, notificationService, appURL)
 	// Email verification reuses the dashboard host (set above) for its verify
 	// link, so it must be configured after ConfigurePasswordReset.
 	authService.ConfigureEmailVerification(emailVerificationRepo, notificationService)
@@ -999,7 +1008,7 @@ func main() {
 		subscriptionRepo.(*db.SubscriptionRepository),
 		notificationService,
 		locker,
-		baseURL,
+		appURL,
 	)
 	preChargeScheduler.Start()
 	defer preChargeScheduler.Stop()
@@ -1010,7 +1019,7 @@ func main() {
 		notificationService,
 		locker,
 		scheduler.DefaultDunningConfig(),
-		baseURL,
+		appURL,
 	)
 	dunningScheduler.SetPaymentAttempts(db.NewPaymentAttemptRepository(database))          // skip dunning for a settling ACH (Inc 3b)
 	dunningScheduler.SetWriteOffLedger(ledgerService, invoiceRepo.(*db.InvoiceRepository)) // auto-write-off posts its ledger reversal (#466 follow-up)
@@ -1025,7 +1034,7 @@ func main() {
 		subscriptionService,
 		notificationService,
 		locker,
-		baseURL,
+		appURL,
 	)
 	trialScheduler.Start()
 	defer trialScheduler.Stop()
@@ -1035,7 +1044,7 @@ func main() {
 		customerRepo,
 		notificationService,
 		locker,
-		baseURL,
+		appURL,
 	)
 	cardExpiryScheduler.Start()
 	defer cardExpiryScheduler.Stop()
@@ -1147,7 +1156,7 @@ func main() {
 	// Track D · D1: proactively email the tenant when they near or cross a state's
 	// economic-nexus threshold, so a registration obligation is never missed.
 	nexusScheduler.SetAlertService(service.NewNexusAlertService(
-		nexusStatusService, taxNexusRepo, userRepo, notificationService, baseURL,
+		nexusStatusService, taxNexusRepo, userRepo, notificationService, appURL,
 	))
 	nexusScheduler.Start()
 	defer nexusScheduler.Stop()
@@ -1358,7 +1367,7 @@ func main() {
 		}
 		log.Println("OAUTH_STATE_SECRET not set — using an ephemeral per-boot secret")
 	}
-	oauthHandler := handler.NewOAuthHandler(authService, oauthRegistry, dashboardURL, oauthStateSecret, secureCookie)
+	oauthHandler := handler.NewOAuthHandler(authService, oauthRegistry, appURL, oauthStateSecret, secureCookie)
 	for _, st := range oauthRegistry.Statuses() {
 		if st.Enabled {
 			log.Printf("OAuth provider enabled: %s", st.Name)
@@ -1381,7 +1390,7 @@ func main() {
 		log.Println("SAML_SP_KEY/SAML_SP_CERT not set — generated an ephemeral self-signed SP certificate at boot")
 	}
 	ssoService := service.NewSSOService(ssoConnectionRepo, userRepo, ssoReplayStore, spKey, spCert, oauthRedirectBase)
-	ssoHandler := handler.NewSSOHandler(ssoService, authService, dashboardURL, secureCookie)
+	ssoHandler := handler.NewSSOHandler(ssoService, authService, appURL, secureCookie)
 	gatewayConnHandler := handler.NewGatewayConnectionHandler(gatewayConnService)                       // BYO increment 4
 	integrationConnHandler := handler.NewIntegrationConnectionHandler(integrationConnService)           // BYO increment 5 (tax/CRM/storage)
 	advancedBillingHandler := handler.NewAdvancedBillingHandler(advancedBillingService, invoiceService) // P15
@@ -1396,11 +1405,8 @@ func main() {
 
 	// Portal (P25)
 	// PORTAL_URL is where the customer-facing portal SPA is served; magic
-	// link emails point there. Defaults to the API base URL for dev.
-	portalBaseURL := getEnvDefault("PORTAL_URL", baseURL)
-	// Every customer-facing email link — hosted checkout (Pay Now) and portal
-	// (update-payment-method) — is an SPA route on app.recurso.dev, not the API.
-	notificationService.SetAppBaseURL(getEnvDefault("DASHBOARD_URL", portalBaseURL))
+	// link emails point there.
+	portalBaseURL := getEnvDefault("PORTAL_URL", appURL)
 	portalService := service.NewPortalService(customerRepo, invoiceRepo, magicLinkRepo, portalSessionRepo, disputeRepo, giftService, emailSender, portalBaseURL)
 	portalAPIHandler := handler.NewPortalAPIHandler(portalService)
 	// ENG-5: wire the Stripe SetupIntent card-update flow. The mock gateway
@@ -1543,7 +1549,7 @@ func main() {
 	mandateHandler := handler.NewMandateHandler(mandateService)
 	offlinePaymentHandler := handler.NewOfflinePaymentHandler(offlinePaymentService)
 	orgHandler := handler.NewOrganizationHandler(orgService)
-	accountingHandler := handler.NewAccountingHandler(acctConnRepo, accountingService, oauthStateSecret, dashboardURL)
+	accountingHandler := handler.NewAccountingHandler(acctConnRepo, accountingService, oauthStateSecret, appURL)
 	churnHandler := handler.NewChurnHandler(churnService, database)
 
 	// Payment Handlers
