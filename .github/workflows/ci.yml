@@ -319,7 +319,7 @@ jobs:
             type=raw,value=latest
 
       - name: Build image (local)
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           load: true
@@ -335,7 +335,7 @@ jobs:
           ignore-unfixed: true
 
       - name: Build and push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: true
