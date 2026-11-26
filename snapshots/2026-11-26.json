@@ -1,0 +1,230 @@
+{
+  "date": "2026-11-26",
+  "repo": {
+    "stargazers_count": 8,
+    "forks_count": 5,
+    "open_issues_count": 17,
+    "subscribers_count": 0
+  },
+  "clones": {
+    "count": 3311,
+    "uniques": 168,
+    "clones": [
+      {
+        "timestamp": "2026-11-12T00:00:00Z",
+        "count": 14,
+        "uniques": 10
+      },
+      {
+        "timestamp": "2026-11-13T00:00:00Z",
+        "count": 34,
+        "uniques": 21
+      },
+      {
+        "timestamp": "2026-11-14T00:00:00Z",
+        "count": 17,
+        "uniques": 14
+      },
+      {
+        "timestamp": "2026-11-15T00:00:00Z",
+        "count": 22,
+        "uniques": 18
+      },
+      {
+        "timestamp": "2026-11-16T00:00:00Z",
+        "count": 12,
+        "uniques": 6
+      },
+      {
+        "timestamp": "2026-11-17T00:00:00Z",
+        "count": 15,
+        "uniques": 10
+      },
+      {
+        "timestamp": "2026-11-18T00:00:00Z",
+        "count": 19,
+        "uniques": 13
+      },
+      {
+        "timestamp": "2026-11-19T00:00:00Z",
+        "count": 15,
+        "uniques": 11
+      },
+      {
+        "timestamp": "2026-11-20T00:00:00Z",
+        "count": 16,
+        "uniques": 10
+      },
+      {
+        "timestamp": "2026-11-21T00:00:00Z",
+        "count": 5,
+        "uniques": 5
+      },
+      {
+        "timestamp": "2026-11-22T00:00:00Z",
+        "count": 101,
+        "uniques": 17
+      },
+      {
+        "timestamp": "2026-11-23T00:00:00Z",
+        "count": 32,
+        "uniques": 20
+      },
+      {
+        "timestamp": "2026-11-24T00:00:00Z",
+        "count": 2984,
+        "uniques": 21
+      },
+      {
+        "timestamp": "2026-11-25T00:00:00Z",
+        "count": 25,
+        "uniques": 17
+      }
+    ]
+  },
+  "views": {
+    "count": 54,
+    "uniques": 23,
+    "views": [
+      {
+        "timestamp": "2026-11-12T00:00:00Z",
+        "count": 1,
+        "uniques": 1
+      },
+      {
+        "timestamp": "2026-11-13T00:00:00Z",
+        "count": 1,
+        "uniques": 1
+      },
+      {
+        "timestamp": "2026-11-14T00:00:00Z",
+        "count": 7,
+        "uniques": 2
+      },
+      {
+        "timestamp": "2026-11-15T00:00:00Z",
+        "count": 3,
+        "uniques": 3
+      },
+      {
+        "timestamp": "2026-11-16T00:00:00Z",
+        "count": 0,
+        "uniques": 0
+      },
+      {
+        "timestamp": "2026-11-17T00:00:00Z",
+        "count": 3,
+        "uniques": 3
+      },
+      {
+        "timestamp": "2026-11-18T00:00:00Z",
+        "count": 1,
+        "uniques": 1
+      },
+      {
+        "timestamp": "2026-11-19T00:00:00Z",
+        "count": 6,
+        "uniques": 3
+      },
+      {
+        "timestamp": "2026-11-20T00:00:00Z",
+        "count": 1,
+        "uniques": 1
+      },
+      {
+        "timestamp": "2026-11-21T00:00:00Z",
+        "count": 3,
+        "uniques": 2
+      },
+      {
+        "timestamp": "2026-11-22T00:00:00Z",
+        "count": 18,
+        "uniques": 4
+      },
+      {
+        "timestamp": "2026-11-23T00:00:00Z",
+        "count": 1,
+        "uniques": 1
+      },
+      {
+        "timestamp": "2026-11-24T00:00:00Z",
+        "count": 7,
+        "uniques": 3
+      },
+      {
+        "timestamp": "2026-11-25T00:00:00Z",
+        "count": 2,
+        "uniques": 2
+      }
+    ]
+  },
+  "referrers": [
+    {
+      "referrer": "github.com",
+      "count": 8,
+      "uniques": 5
+    }
+  ],
+  "paths": [
+    {
+      "path": "/recurso-dev/recurso",
+      "title": "Overview",
+      "count": 30,
+      "uniques": 19
+    },
+    {
+      "path": "/recurso-dev/recurso/commits/main",
+      "title": "/commits/main",
+      "count": 6,
+      "uniques": 1
+    },
+    {
+      "path": "/recurso-dev/recurso/releases/tag/v0.13.0",
+      "title": "/releases/tag/v0.13.0",
+      "count": 4,
+      "uniques": 1
+    },
+    {
+      "path": "/recurso-dev/recurso/blob/94cc8fa1a34e0cf591648a0ed3020a61ac49ce0e/internal/service/pricing_simulator.go",
+      "title": "/blob/94cc8fa1a34e0cf591648a0ed3020a61ac49ce0e/internal/service/pricing_simulator.go",
+      "count": 2,
+      "uniques": 2
+    },
+    {
+      "path": "/recurso-dev/recurso/pulls",
+      "title": "/pulls",
+      "count": 2,
+      "uniques": 2
+    },
+    {
+      "path": "/recurso-dev/recurso/tree/main",
+      "title": "/tree/main",
+      "count": 2,
+      "uniques": 1
+    },
+    {
+      "path": "/recurso-dev/recurso/blob/main/internal/adapter/db/migrations/000038_organizations.up.sql",
+      "title": "/blob/main/internal/adapter/db/migrations/000038_organizations.up.sql",
+      "count": 1,
+      "uniques": 1
+    },
+    {
+      "path": "/recurso-dev/recurso/blob/main/internal/service/invoice.go",
+      "title": "/blob/main/internal/service/invoice.go",
+      "count": 1,
+      "uniques": 1
+    },
+    {
+      "path": "/recurso-dev/recurso/blob/main/internal/service/subscription.go",
+      "title": "/blob/main/internal/service/subscription.go",
+      "count": 1,
+      "uniques": 1
+    },
+    {
+      "path": "/recurso-dev/recurso/commits",
+      "title": "/commits",
+      "count": 1,
+      "uniques": 1
+    }
+  ]
+}
